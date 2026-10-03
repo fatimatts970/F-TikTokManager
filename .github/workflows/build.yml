@@ -25,7 +25,24 @@ jobs:
         gradle-version: '8.5'
 
     - name: Build Debug APK
-      run: gradle assembleDebug --stacktrace
+      run: |
+        gradle assembleDebug --console=plain --warning-mode=none 2>&1 | tee build.log
+        exit ${PIPESTATUS[0]}
+
+    - name: Error summary
+      if: failure()
+      run: |
+        echo "=== WHAT WENT WRONG ==="
+        sed -n '/What went wrong/,/Try:/p' build.log | head -40
+        echo "=== ERROR LINES ==="
+        grep -n -E "error:|Caused by|Execution failed" build.log | head -30 || true
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
