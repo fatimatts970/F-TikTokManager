@@ -16,6 +16,11 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebResourceError;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+import java.util.Collections;
+import java.util.Locale;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -35,6 +40,10 @@ public class WebActivity extends AppCompatActivity {
     private static final int REQ_CHOOSE_IMG = 101;
     private static final int REQ_VCAM_CAPTURE = 102;
     private SharedPreferences sp;
+    private DeviceProfile device;
+    private String deviceScript;
+    private boolean docStartOk = false;
+    private static final String KYC_URL = "https://www.tiktok.com/kyc";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -56,6 +65,11 @@ public class WebActivity extends AppCompatActivity {
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         findViewById(R.id.btnChooseImage).setOnClickListener(v -> pickVirtualImage());
+        findViewById(R.id.btnKyc).setOnClickListener(v -> webView.loadUrl(KYC_URL));
+
+        device = DeviceProfile.forAccount(accountId);
+        TextView txtHost = findViewById(R.id.txtHost);
+        if (txtHost != null) txtHost.setText("tiktok.com \u2022 " + device.label());
 
         setupWebView();
         String startUrl = getIntent().getStringExtra(EXTRA_URL);
@@ -70,15 +84,43 @@ public class WebActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36");
+        // Each clone = its own phone. Real WebView UA, only the "(Linux; ...)" device part is swapped.
+        String finalUa = device.buildUserAgent(settings.getUserAgentString());
+        settings.setUserAgentString(finalUa);
+        DeviceProfile.applyUaMetadata(settings, device, finalUa);
+        deviceScript = device.script(accountId, finalUa);
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(webView, deviceScript, Collections.singleton("*"));
+                docStartOk = true;
+            }
+        } catch (Throwable ignored) {
+            docStartOk = false;
+        }
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return blockNonWeb(view, request.getUrl().toString());
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // Safety net: if an app-scheme (snssdk1233:// etc.) ever slips through, don't leave the error page.
+                if (request.isForMainFrame() && error.getErrorCode() == WebViewClient.ERROR_UNSUPPORTED_SCHEME) {
+                    if (view.canGoBack()) view.goBack();
+                    return;
+                }
+                super.onReceivedError(view, request, error);
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
+                if (!docStartOk && deviceScript != null) view.evaluateJavascript(deviceScript, null);
                 injectAntiDetect(view);
             }
 
@@ -141,6 +183,32 @@ public class WebActivity extends AppCompatActivity {
                 return true;
             }
         });
+    }
+
+    /**
+     * TikTok pages try to wake the real TikTok app with links like snssdk1233://aweme/detail/...
+     * A WebView can't open those (ERR_UNKNOWN_URL_SCHEME), so every non-web link is swallowed
+     * and the clone stays on the current page.
+     */
+    private boolean blockNonWeb(WebView view, String url) {
+        if (url == null) return false;
+        String u = url.toLowerCase(Locale.ROOT);
+        if (u.startsWith("http://") || u.startsWith("https://") || u.startsWith("about:")
+                || u.startsWith("blob:") || u.startsWith("data:") || u.startsWith("javascript:")
+                || u.startsWith("file:")) {
+            return false;
+        }
+        if (u.startsWith("intent:")) {
+            try {
+                Intent i = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                final String fb = i.getStringExtra("browser_fallback_url");
+                if (fb != null && (fb.startsWith("http://") || fb.startsWith("https://"))) {
+                    view.post(() -> view.loadUrl(fb));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return true;
     }
 
     private void pickVirtualImage() {
