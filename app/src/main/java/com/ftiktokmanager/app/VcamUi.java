@@ -149,8 +149,8 @@ final class VcamUi {
             boolean now = !virtual;
             sp.edit().putBoolean("cam_virtual", now).apply();
             Toast.makeText(a, now
-                    ? (sel == null ? "\uD83C\uDFAD Virtual ON - pehle ek image add karo" : "\uD83C\uDFAD Virtual camera ON")
-                    : "\uD83D\uDCF7 Physical camera ON", Toast.LENGTH_SHORT).show();
+                    ? "\uD83C\uDFAD Virtual camera selected - clones will show your gallery image instead of the camera"
+                    : "\uD83D\uDCF7 Physical camera selected - the real camera will be used", Toast.LENGTH_SHORT).show();
             dlg[0].dismiss();
             changed.run();
         });

@@ -25,6 +25,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial;
 import android.text.InputType;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import java.io.File;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.io.OutputStream;
@@ -54,6 +55,32 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
                 if (uri != null) doImport(uri);
             });
 
+    private int vcamTargetAcc = 0;
+
+    private final ActivityResultLauncher<String> vcamImgPicker = registerForActivityResult(
+            new ActivityResultContracts.GetContent(), uri -> {
+                final int acc = vcamTargetAcc;
+                if (acc <= 0) return;
+                if (uri == null) {
+                    openVcamFor(acc);
+                    return;
+                }
+                App.io(() -> {
+                    try {
+                        File f = VcamImg.importUri(MainActivity.this, acc, uri);
+                        VcamImg.select(sp, acc, f);
+                        sp.edit().putBoolean("cam_virtual", true).apply();
+                        App.ui(() -> {
+                            Toast.makeText(this, "\uD83C\uDFAD Image added - Virtual Camera ON", Toast.LENGTH_SHORT).show();
+                            updateVcamButtonState();
+                            openVcamFor(acc);
+                        });
+                    } catch (Exception e) {
+                        App.ui(() -> Toast.makeText(this, "Image add nahi hui", Toast.LENGTH_SHORT).show());
+                    }
+                });
+            });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -72,18 +99,14 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
         rv.setAdapter(adapter);
 
         findViewById(R.id.btnMenu).setOnClickListener(v -> drawer.openDrawer(GravityCompat.START));
-        findViewById(R.id.btnGlobe).setOnClickListener(v -> openIp());
+        findViewById(R.id.btnGlobe).setOnClickListener(v -> defaultProxy());
         findViewById(R.id.btnTune).setOnClickListener(v -> showSettings());
         findViewById(R.id.tileIp).setOnClickListener(v -> openIp());
         findViewById(R.id.tileLinks).setOnClickListener(v -> openLinks());
         findViewById(R.id.tileBackup).setOnClickListener(v -> confirmBackup());
         findViewById(R.id.tileRestore).setOnClickListener(v -> importLauncher.launch(new String[]{"*/*"}));
 
-        btnVcamToggle.setOnClickListener(v -> {
-            boolean current = sp.getBoolean("cam_virtual", false);
-            sp.edit().putBoolean("cam_virtual", !current).apply();
-            updateVcamButtonState();
-        });
+        btnVcamToggle.setOnClickListener(v -> toggleCamMode());
 
         NavigationView nav = findViewById(R.id.navView);
         nav.setNavigationItemSelectedListener(item -> {
@@ -312,7 +335,8 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
 
     private void defaultProxy() {
         ProxyDialog.show(this, "Default SOCKS5 proxy",
-                "New accounts will start with these SOCKS5 settings. "
+                "SOCKS5 proxy only. New clones will start with these SOCKS5 settings. "
+                        + "Each clone can still have its own different SOCKS5 proxy (long-press a clone \u2192 SOCKS5 Proxy) - e.g. one clone USA, another UK.\n\n"
                         + "No proxy? Switching on any VPN app does the same job.",
                 sp.getString("px_host", ""), sp.getInt("px_port", 0), sp.getString("px_user", ""),
                 sp.getString("px_pass", ""), false, false, null,
@@ -401,26 +425,56 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
 
     // -------------------------------------------------------------- settings
 
+    /** Same text everywhere the camera mode is switched. */
+    private void toggleCamMode() {
+        boolean now = !sp.getBoolean("cam_virtual", false);
+        sp.edit().putBoolean("cam_virtual", now).apply();
+        updateVcamButtonState();
+        Toast.makeText(this, now
+                ? "\uD83C\uDFAD Virtual camera selected - clones will show your gallery image instead of the camera"
+                : "\uD83D\uDCF7 Physical camera selected - the real camera will be used", Toast.LENGTH_SHORT).show();
+    }
+
+    private void openVcamFor(final int accId) {
+        VcamUi.show(this, accId, () -> {
+            vcamTargetAcc = accId;
+            try {
+                vcamImgPicker.launch("image/*");
+            } catch (Exception e) {
+                Toast.makeText(this, "Gallery open nahi hui", Toast.LENGTH_SHORT).show();
+            }
+        }, this::updateVcamButtonState);
+    }
+
+    /** Settings = Virtual / Physical camera only (mode, gallery images, adjust). */
     private void showSettings() {
-        BottomSheetDialog dlg = new BottomSheetDialog(this);
-        View v = getLayoutInflater().inflate(R.layout.sheet_settings, null);
-        SwitchMaterial sw = v.findViewById(R.id.switchVcam);
-        sw.setChecked(sp.getBoolean("cam_virtual", false));
-        sw.setOnCheckedChangeListener((b, on) -> {
-            sp.edit().putBoolean("cam_virtual", on).apply();
-            updateVcamButtonState();
+        App.io(() -> {
+            final List<CloneModel> list = App.db().getAllAccounts();
+            App.ui(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (list.isEmpty()) {
+                    Toast.makeText(this, "Add an account first", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (list.size() == 1) {
+                    openVcamFor(list.get(0).id);
+                    return;
+                }
+                boolean virtual = sp.getBoolean("cam_virtual", false);
+                String[] items = new String[list.size() + 1];
+                items[0] = virtual ? "Mode: \uD83C\uDFAD Virtual  \u2192 tap to switch to \uD83D\uDCF7 Physical"
+                        : "Mode: \uD83D\uDCF7 Physical  \u2192 tap to switch to \uD83C\uDFAD Virtual";
+                for (int i = 0; i < list.size(); i++) items[i + 1] = "\uD83D\uDDBC Images \u00B7 " + list.get(i).name;
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle("\uD83C\uDFAD Virtual Camera")
+                        .setItems(items, (d, which) -> {
+                            if (which == 0) toggleCamMode();
+                            else openVcamFor(list.get(which - 1).id);
+                        })
+                        .setNegativeButton("Close", null)
+                        .show();
+            });
         });
-        v.findViewById(R.id.btnDefaultProxy).setOnClickListener(b -> {
-            dlg.dismiss();
-            defaultProxy();
-        });
-        TextView iso = v.findViewById(R.id.txtIsolation);
-        iso.setText(SessionHelper.profilesSupported()
-                ? "Full - every account has its own cookies, storage and cache (WebView multi-profile)."
-                : "Partial - only cookies are separated. Update \"Android System WebView\" from Play Store for full isolation.");
-        ((TextView) v.findViewById(R.id.txtVersion)).setText("F TikTok Manager v1.2 · Android " + Build.VERSION.RELEASE);
-        dlg.setContentView(v);
-        dlg.show();
     }
 
     private void showAbout() {

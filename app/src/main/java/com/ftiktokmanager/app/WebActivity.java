@@ -73,7 +73,7 @@ public class WebActivity extends AppCompatActivity {
             {"\uD83D\uDCB5 Payout / Monthly Earning", "https://www.tiktok.com/reward-onboarding?wallet_type=MONTHLY_EARNING&click_entrance=monthly_earnings_page"},
             {"\uD83C\uDFAC TikTok Studio Upload", "https://www.tiktok.com/tiktokstudio/upload"},
             {"\uD83C\uDF82 Age DOB Verify", "https://www.tiktok.com/tpp/webapp/age-verification/dob.html?object_type=67"},
-            {"\uD83D\uDCE1 Age DOB (TikTok Live)", "https://www.tiktok.com/tpp/webapp/age-verification/dob.html?object_type=69"},
+            {"\uD83D\uDCE1 Age DOB (TikTok Live)", "https://www.tiktok.com/login?enter_from=underage_account&redirect_url=https%3A%2F%2Fwww.tiktok.com%2Ftpp%2Fwebapp%2Fage-verification%2Fdob.html%3Flang%3Den%26object_type%3D69%26object_id%3D"},
             {"\u2705 KYC", "https://www.tiktok.com/kyc"},
             {"\u26A0\uFE0F Report a Problem", "https://www.tiktok.com/legal/report/feedback"},
             {"\uD83C\uDF0D Check My IP (Region Detect)", ""}
