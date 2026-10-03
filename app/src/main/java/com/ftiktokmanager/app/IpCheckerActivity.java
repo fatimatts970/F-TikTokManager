@@ -60,11 +60,12 @@ public class IpCheckerActivity extends AppCompatActivity {
             int port = 0;
             if (accId > 0) {
                 CloneModel m = App.db().getAccount(accId);
-                if (m != null && m.proxyActive()) {
-                    host = m.pxHost;
-                    port = m.pxPort;
-                    user = m.pxUser;
-                    pass = m.pxPass;
+                ProxyStore.Cfg px = ProxyStore.effective(IpCheckerActivity.this, m);
+                if (px != null) {
+                    host = px.host;
+                    port = px.port;
+                    user = px.user;
+                    pass = px.pass;
                 }
             }
             final boolean viaProxy = !host.isEmpty();

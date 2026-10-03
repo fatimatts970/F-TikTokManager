@@ -47,6 +47,11 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".ProxyActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".LinksActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

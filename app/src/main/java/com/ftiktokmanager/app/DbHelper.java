@@ -124,16 +124,6 @@ public class DbHelper extends SQLiteOpenHelper {
         ContentValues cv = new ContentValues();
         cv.put("name", name);
         if (cookies != null && !cookies.isEmpty()) cv.put("cookies", cookies);
-        // New accounts inherit the global default SOCKS5 proxy (if one is set)
-        SharedPreferences sp = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE);
-        String h = sp.getString("px_host", "");
-        if (!h.isEmpty()) {
-            cv.put("px_host", h);
-            cv.put("px_port", sp.getInt("px_port", 8080));
-            cv.put("px_user", sp.getString("px_user", ""));
-            cv.put("px_pass", sp.getString("px_pass", ""));
-            cv.put("pxon", 1);
-        }
         return db.insert("accounts", null, cv);
     }
 

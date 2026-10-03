@@ -63,6 +63,12 @@ public class WebActivity extends AppCompatActivity {
     private boolean desktop = false;
     private PermissionRequest pendingWebPerm;
 
+    private CloneModel clone;
+    private boolean profileMode = false;
+    private CookieManager cm;
+    private SocksBridge bridge;
+    private static WebActivity proxyOwner;
+
     private ImageButton btnVcam, btnView;
     private TextView txtHost;
 
@@ -91,8 +97,8 @@ public class WebActivity extends AppCompatActivity {
         device = DeviceProfile.forAccount(accountId);
 
         try {
-            CloneModel cm = App.db().getAccount(accountId);
-            desktop = cm != null && cm.desk == 1;
+            clone = App.db().getAccount(accountId);
+            desktop = clone != null && clone.desk == 1;
         } catch (Exception ignored) {
         }
 
@@ -116,7 +122,49 @@ public class WebActivity extends AppCompatActivity {
         setupWebView();
         refreshToolbar();
         String startUrl = getIntent().getStringExtra(EXTRA_URL);
-        webView.loadUrl(startUrl != null ? startUrl : "https://www.tiktok.com/");
+        prepareAndLoad(startUrl != null ? startUrl : "https://www.tiktok.com/");
+    }
+
+    /** Own browser profile + own cookies per clone, then the proxy (if any), then the page. */
+    private void prepareAndLoad(final String url) {
+        final String stored = clone == null ? "" : clone.cookies;
+        if (profileMode) {
+            SessionHelper.injectStored(cm, stored);
+            startProxyThenLoad(url);
+        } else {
+            // Old WebView without profiles: swap this clone's cookies in
+            cm.removeAllCookies(ok -> runOnUiThread(() -> {
+                SessionHelper.injectStored(cm, stored);
+                startProxyThenLoad(url);
+            }));
+        }
+    }
+
+    private void startProxyThenLoad(final String url) {
+        final ProxyStore.Cfg px = ProxyStore.effective(this, clone);
+        if (px == null) {
+            ProxyCfg.clear();
+            webView.loadUrl(url);
+            return;
+        }
+        // A proxy is set for this clone: never load through the phone's own connection
+        if (!ProxyCfg.supported()) {
+            Toast.makeText(this, "Proxy ke liye \"Android System WebView\" update karo (Play Store). Page load nahi kiya.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            bridge = new SocksBridge(px.host, px.port, px.user, px.pass);
+            int port = bridge.start();
+            proxyOwner = this;
+            ProxyCfg.apply(port, () -> runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                Toast.makeText(this, "\uD83C\uDF10 Proxy: " + px.host + ":" + px.port, Toast.LENGTH_SHORT).show();
+                webView.loadUrl(url);
+            }));
+        } catch (Exception e) {
+            Toast.makeText(this, "Proxy start nahi hui: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     // ------------------------------------------------------------ toolbar
@@ -207,6 +255,10 @@ public class WebActivity extends AppCompatActivity {
     }
 
     private void setupWebView() {
+        // Each clone = its own browser (cookies, storage, cache). Must happen before the WebView is used.
+        profileMode = SessionHelper.bindProfile(webView, accountId);
+        cm = SessionHelper.cookieManager(profileMode, accountId);
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -217,8 +269,8 @@ public class WebActivity extends AppCompatActivity {
         realUa = settings.getUserAgentString();
         applyMode();
 
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -246,9 +298,10 @@ public class WebActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 progressBar.setVisibility(View.GONE);
-                String cookies = CookieManager.getInstance().getCookie(url);
+                final String cookies = cm.getCookie(url);
+                cm.flush();
                 if (cookies != null) {
-                    new DbHelper(WebActivity.this).updateCookies(accountId, cookies);
+                    App.io(() -> App.db().updateCookies(accountId, cookies));
                 }
             }
 
@@ -483,6 +536,14 @@ public class WebActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (bridge != null) {
+            bridge.stop();
+            bridge = null;
+        }
+        if (proxyOwner == this) {
+            proxyOwner = null;
+            ProxyCfg.clear();
+        }
         try {
             if (webView != null) webView.destroy();
         } catch (Throwable ignored) {

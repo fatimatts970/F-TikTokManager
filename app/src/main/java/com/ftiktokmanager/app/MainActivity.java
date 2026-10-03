@@ -99,7 +99,7 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
         rv.setAdapter(adapter);
 
         findViewById(R.id.btnMenu).setOnClickListener(v -> drawer.openDrawer(GravityCompat.START));
-        findViewById(R.id.btnGlobe).setOnClickListener(v -> defaultProxy());
+        findViewById(R.id.btnGlobe).setOnClickListener(v -> startActivity(new Intent(this, ProxyActivity.class)));
         findViewById(R.id.btnTune).setOnClickListener(v -> showSettings());
         findViewById(R.id.tileIp).setOnClickListener(v -> openIp());
         findViewById(R.id.tileLinks).setOnClickListener(v -> openLinks());
@@ -330,21 +330,6 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
                         loadAccounts();
                     });
                     Toast.makeText(this, "🌐 Proxy settings saved for " + m.name, Toast.LENGTH_SHORT).show();
-                });
-    }
-
-    private void defaultProxy() {
-        ProxyDialog.show(this, "Default SOCKS5 proxy",
-                "SOCKS5 proxy only. New clones will start with these SOCKS5 settings. "
-                        + "Each clone can still have its own different SOCKS5 proxy (long-press a clone \u2192 SOCKS5 Proxy) - e.g. one clone USA, another UK.\n\n"
-                        + "No proxy? Switching on any VPN app does the same job.",
-                sp.getString("px_host", ""), sp.getInt("px_port", 0), sp.getString("px_user", ""),
-                sp.getString("px_pass", ""), false, false, null,
-                (h, p, u, pw, on) -> {
-                    sp.edit().putString("px_host", h).putInt("px_port", p)
-                            .putString("px_user", u).putString("px_pass", pw).apply();
-                    Toast.makeText(this, "Default proxy saved - new accounts will use these settings",
-                            Toast.LENGTH_LONG).show();
                 });
     }
 
