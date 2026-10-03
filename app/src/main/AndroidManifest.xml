@@ -12,9 +12,6 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
-        <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="Virtual Camera for Facebook (Replace Live Camera with Image)" />
-        <meta-data android:name="xposedminversion" android:value="54" />
         android:name=".App"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -22,6 +19,10 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FTikTokManager">
+
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="Virtual Camera for Facebook (Replace Live Camera with Image)" />
+        <meta-data android:name="xposedminversion" android:value="54" />
 
         <activity
             android:name=".MainActivity"
