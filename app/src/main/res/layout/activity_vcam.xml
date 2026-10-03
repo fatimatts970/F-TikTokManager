@@ -2,12 +2,13 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_main">
+    android:background="@color/preview_bg">
 
     <ImageView
         android:id="@+id/imgPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:contentDescription="VCAM preview"
         android:scaleType="fitCenter" />
 
     <LinearLayout
@@ -15,31 +16,27 @@
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:background="#99000000"
-        android:padding="20dp"
         android:gravity="center"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:padding="20dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCancel"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Cancel"
-            android:backgroundTint="@color/bg_card"
-            android:textColor="@color/text_light" />
+            android:text="Cancel" />
 
         <Space
             android:layout_width="16dp"
             android:layout_height="wrap_content" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCapture"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="📷 Feed Image"
-            android:backgroundTint="@color/gold"
-            android:textColor="@color/bg_main"
-            android:textStyle="bold" />
+            android:text="📷 Feed Image" />
     </LinearLayout>
 </RelativeLayout>

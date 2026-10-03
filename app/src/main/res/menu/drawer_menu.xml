@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item android:id="@+id/nav_accounts" android:checked="true" android:icon="@drawable/ic_home" android:title="Accounts" />
+    </group>
+    <group android:checkableBehavior="none">
+        <item android:id="@+id/nav_ip" android:icon="@drawable/ic_globe" android:title="IP Checker" />
+        <item android:id="@+id/nav_links" android:icon="@drawable/ic_link" android:title="Links" />
+        <item android:id="@+id/nav_vcam" android:icon="@drawable/ic_vcam" android:title="VCAM &amp; Settings" />
+        <item android:id="@+id/nav_backup" android:icon="@drawable/ic_backup" android:title="Backup" />
+        <item android:id="@+id/nav_restore" android:icon="@drawable/ic_restore" android:title="Restore" />
+        <item android:id="@+id/nav_about" android:icon="@drawable/ic_info" android:title="About" />
+    </group>
+</menu>
