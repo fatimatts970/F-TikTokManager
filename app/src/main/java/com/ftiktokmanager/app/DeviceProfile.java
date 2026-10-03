@@ -64,9 +64,13 @@ final class DeviceProfile {
     private static final Pattern LINUX = Pattern.compile("\\(Linux;[^)]*\\)");
     private static final Pattern CHROME = Pattern.compile("Chrome/(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)");
 
-    /** Takes the REAL WebView user-agent and only swaps the "(Linux; ...)" part for this phone. */
-    String buildUserAgent(String realUa) {
+    /** Takes the REAL WebView user-agent and only swaps the "(Linux; ...)" part for this phone. Desktop = Windows Chrome. */
+    String buildUserAgent(String realUa, boolean desktop) {
         String ua = realUa == null ? "" : realUa;
+        if (desktop) {
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/"
+                    + chromeMajor(ua) + ".0.0.0 Safari/537.36";
+        }
         String part = "(Linux; Android " + android + "; " + model + ")";
         Matcher m = LINUX.matcher(ua);
         if (m.find()) return m.replaceFirst(Matcher.quoteReplacement(part));
@@ -84,7 +88,7 @@ final class DeviceProfile {
     }
 
     /** Also change the Client-Hints (Sec-CH-UA-*) the WebView sends. Uses reflection so it can never break the build. */
-    static void applyUaMetadata(WebSettings s, DeviceProfile p, String finalUa) {
+    static void applyUaMetadata(WebSettings s, DeviceProfile p, String finalUa, boolean desktop) {
         try {
             Class<?> bvB = Class.forName("androidx.webkit.UserAgentMetadata$BrandVersion$Builder");
             Class<?> bvC = Class.forName("androidx.webkit.UserAgentMetadata$BrandVersion");
@@ -106,11 +110,11 @@ final class DeviceProfile {
             Object ub = umB.getConstructor().newInstance();
             umB.getMethod("setBrandVersionList", List.class).invoke(ub, list);
             umB.getMethod("setFullVersion", String.class).invoke(ub, full);
-            umB.getMethod("setPlatform", String.class).invoke(ub, "Android");
-            umB.getMethod("setPlatformVersion", String.class).invoke(ub, p.android + ".0.0");
-            umB.getMethod("setArchitecture", String.class).invoke(ub, "");
-            umB.getMethod("setModel", String.class).invoke(ub, p.model);
-            umB.getMethod("setMobile", boolean.class).invoke(ub, true);
+            umB.getMethod("setPlatform", String.class).invoke(ub, desktop ? "Windows" : "Android");
+            umB.getMethod("setPlatformVersion", String.class).invoke(ub, desktop ? "10.0.0" : p.android + ".0.0");
+            umB.getMethod("setArchitecture", String.class).invoke(ub, desktop ? "x86" : "");
+            umB.getMethod("setModel", String.class).invoke(ub, desktop ? "" : p.model);
+            umB.getMethod("setMobile", boolean.class).invoke(ub, !desktop);
             umB.getMethod("setBitness", int.class).invoke(ub, 64);
             Object meta = umB.getMethod("build").invoke(ub);
             compat.getMethod("setUserAgentMetadata", WebSettings.class, umC).invoke(null, s, meta);
@@ -124,9 +128,22 @@ final class DeviceProfile {
     }
 
     /** JavaScript that makes the page see this clone's phone. Runs at document start (or onPageStarted as fallback). */
-    String script(int accountId, String finalUa) {
+    String script(int accountId, String finalUa, boolean desktop) {
         String major = chromeMajor(finalUa);
         String full = chromeFull(finalUa);
+        final String platform = desktop ? "Win32" : "Linux armv8l";
+        final int touch = desktop ? 0 : 5;
+        final int sw = desktop ? 1920 : width;
+        final int sh = desktop ? 1080 : height;
+        final int sah = desktop ? 1040 : height - 24;
+        final String dprS = desktop ? "1" : String.valueOf(dpr);
+        final String uadPlat = desktop ? "Windows" : "Android";
+        final String uadMobile = desktop ? "false" : "true";
+        final String uadPlatVer = desktop ? "10.0.0" : android + ".0.0";
+        final String uadModel = desktop ? "" : model;
+        final String uadArch = desktop ? "x86" : "";
+        final String gV = desktop ? "Google Inc. (NVIDIA)" : gpuVendor;
+        final String gR = desktop ? "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)" : gpuRenderer;
         String out = "(function(){try{" +
                 "if(window.__fdev)return;window.__fdev=1;" +
                 "var SEED=" + (accountId * 7919 + 104729) + ";" +
@@ -134,28 +151,28 @@ final class DeviceProfile {
                 "function def(o,k,v){try{Object.defineProperty(o,k,{get:function(){return v;},configurable:true});}catch(e){}}" +
                 // navigator basics
                 "var N=Navigator.prototype;" +
-                "def(N,'platform','Linux armv8l');" +
+                "def(N,'platform','" + platform + "');" +
                 "def(N,'hardwareConcurrency'," + cores + ");" +
                 "def(N,'deviceMemory'," + Math.min(ram, 8) + ");" +
-                "def(N,'maxTouchPoints',5);" +
+                "def(N,'maxTouchPoints'," + touch + ");" +
                 "def(N,'vendor','Google Inc.');" +
                 // screen
                 "var S=Screen.prototype;" +
-                "def(S,'width'," + width + ");def(S,'height'," + height + ");" +
-                "def(S,'availWidth'," + width + ");def(S,'availHeight'," + (height - 24) + ");" +
+                "def(S,'width'," + sw + ");def(S,'height'," + sh + ");" +
+                "def(S,'availWidth'," + sw + ");def(S,'availHeight'," + sah + ");" +
                 "def(S,'colorDepth',24);def(S,'pixelDepth',24);" +
-                "def(window,'devicePixelRatio'," + dpr + ");" +
+                "def(window,'devicePixelRatio'," + dprS + ");" +
                 // client hints in JS
                 "var BR=[{brand:'Chromium',version:'" + major + "'},{brand:'Google Chrome',version:'" + major + "'},{brand:'Not.A/Brand',version:'24'}];" +
-                "var UAD={brands:BR,mobile:true,platform:'Android'," +
-                "getHighEntropyValues:function(h){return Promise.resolve({brands:BR,mobile:true,platform:'Android',platformVersion:'" + android + ".0.0'," +
-                "model:'" + js(model) + "',architecture:'',bitness:'64',uaFullVersion:'" + full + "',wow64:false," +
+                "var UAD={brands:BR,mobile:" + uadMobile + ",platform:'" + uadPlat + "'," +
+                "getHighEntropyValues:function(h){return Promise.resolve({brands:BR,mobile:" + uadMobile + ",platform:'" + uadPlat + "',platformVersion:'" + uadPlatVer + "'," +
+                "model:'" + js(uadModel) + "',architecture:'" + uadArch + "',bitness:'64',uaFullVersion:'" + full + "',wow64:false," +
                 "fullVersionList:[{brand:'Chromium',version:'" + full + "'},{brand:'Google Chrome',version:'" + full + "'},{brand:'Not.A/Brand',version:'24.0.0.0'}]});}," +
-                "toJSON:function(){return {brands:BR,mobile:true,platform:'Android'};}};" +
+                "toJSON:function(){return {brands:BR,mobile:" + uadMobile + ",platform:'" + uadPlat + "'};}};" +
                 "def(N,'userAgentData',UAD);" +
                 // WebGL vendor / renderer
                 "function gl(P){if(!P)return;var o=P.getParameter;P.getParameter=function(p){" +
-                "if(p===37445)return '" + js(gpuVendor) + "';if(p===37446)return '" + js(gpuRenderer) + "';return o.apply(this,arguments);};}" +
+                "if(p===37445)return '" + js(gV) + "';if(p===37446)return '" + js(gR) + "';return o.apply(this,arguments);};}" +
                 "gl(window.WebGLRenderingContext&&WebGLRenderingContext.prototype);" +
                 "gl(window.WebGL2RenderingContext&&WebGL2RenderingContext.prototype);" +
                 // canvas noise (same clone = same noise, other clone = different)

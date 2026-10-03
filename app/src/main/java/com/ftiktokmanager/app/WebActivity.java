@@ -1,32 +1,44 @@
 package com.ftiktokmanager.app;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebResourceError;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
-import java.util.Collections;
-import java.util.Locale;
-import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import java.io.InputStream;
+import androidx.core.content.ContextCompat;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class WebActivity extends AppCompatActivity {
     public static final String EXTRA_ID = "account_id";
@@ -39,11 +51,33 @@ public class WebActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> filePathCallback;
     private static final int REQ_CHOOSE_IMG = 101;
     private static final int REQ_VCAM_CAPTURE = 102;
+    private static final int REQ_ADD_VCAM_IMG = 201;
+    private static final int REQ_WEB_PERM = 301;
     private SharedPreferences sp;
+
     private DeviceProfile device;
+    private String realUa;
     private String deviceScript;
     private boolean docStartOk = false;
-    private static final String KYC_URL = "https://www.tiktok.com/kyc";
+    private ScriptHandler docStartHandler;
+    private boolean desktop = false;
+    private PermissionRequest pendingWebPerm;
+
+    private ImageButton btnVcam, btnView;
+    private TextView txtHost;
+
+    private static final String[][] QUICK_LINKS = {
+            {"\uD83E\uDDFE Tax Info (USA Acc)", "https://www.tiktok.com/tax/us-w9-tax-select?type"},
+            {"\uD83D\uDCCA Tax Status (USA Acc)", "https://www.tiktok.com/tax/info-us?enter_from"},
+            {"\uD83D\uDCB0 Payout Dashboard", "https://www.tiktok.com/periodic/dashboard"},
+            {"\uD83D\uDCB5 Payout / Monthly Earning", "https://www.tiktok.com/reward-onboarding?wallet_type=MONTHLY_EARNING&click_entrance=monthly_earnings_page"},
+            {"\uD83C\uDFAC TikTok Studio Upload", "https://www.tiktok.com/tiktokstudio/upload"},
+            {"\uD83C\uDF82 Age DOB Verify", "https://www.tiktok.com/tpp/webapp/age-verification/dob.html?object_type=67"},
+            {"\uD83D\uDCE1 Age DOB (TikTok Live)", "https://www.tiktok.com/tpp/webapp/age-verification/dob.html?object_type=69"},
+            {"\u2705 KYC", "https://www.tiktok.com/kyc"},
+            {"\u26A0\uFE0F Report a Problem", "https://www.tiktok.com/legal/report/feedback"},
+            {"\uD83C\uDF0D Check My IP (Region Detect)", ""}
+    };
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -54,26 +88,122 @@ public class WebActivity extends AppCompatActivity {
         accountId = getIntent().getIntExtra(EXTRA_ID, 1);
         accountName = getIntent().getStringExtra(EXTRA_NAME);
         sp = getSharedPreferences("cfg", MODE_PRIVATE);
+        device = DeviceProfile.forAccount(accountId);
+
+        try {
+            CloneModel cm = App.db().getAccount(accountId);
+            desktop = cm != null && cm.desk == 1;
+        } catch (Exception ignored) {
+        }
 
         TextView txtTitle = findViewById(R.id.txtTitle);
         if (accountName != null) {
             txtTitle.setText(accountName);
         }
+        txtHost = findViewById(R.id.txtHost);
 
         progressBar = findViewById(R.id.webProgress);
         webView = findViewById(R.id.webView);
+        btnVcam = findViewById(R.id.btnVcam);
+        btnView = findViewById(R.id.btnView);
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
-        findViewById(R.id.btnChooseImage).setOnClickListener(v -> pickVirtualImage());
-        findViewById(R.id.btnKyc).setOnClickListener(v -> webView.loadUrl(KYC_URL));
-
-        device = DeviceProfile.forAccount(accountId);
-        TextView txtHost = findViewById(R.id.txtHost);
-        if (txtHost != null) txtHost.setText("tiktok.com \u2022 " + device.label());
+        btnVcam.setOnClickListener(v -> showVcam());
+        findViewById(R.id.btnLinks).setOnClickListener(v -> showQuickLinks());
+        findViewById(R.id.btnKyc).setOnClickListener(v -> webView.loadUrl("https://www.tiktok.com/kyc"));
+        btnView.setOnClickListener(v -> toggleDesktop());
 
         setupWebView();
+        refreshToolbar();
         String startUrl = getIntent().getStringExtra(EXTRA_URL);
         webView.loadUrl(startUrl != null ? startUrl : "https://www.tiktok.com/");
+    }
+
+    // ------------------------------------------------------------ toolbar
+
+    private void refreshToolbar() {
+        boolean virtual = sp.getBoolean("cam_virtual", false);
+        btnVcam.setColorFilter(virtual ? getColor(R.color.accent_pink) : getColor(R.color.icon_primary));
+        btnView.setImageResource(desktop ? R.drawable.ic_desktop : R.drawable.ic_phone);
+        txtHost.setText((desktop ? "Desktop" : "tiktok.com") + " \u2022 " + device.label());
+    }
+
+    private void showVcam() {
+        VcamUi.show(this, accountId, () -> {
+            Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+            i.setType("image/*");
+            try {
+                startActivityForResult(i, REQ_ADD_VCAM_IMG);
+            } catch (Exception e) {
+                Toast.makeText(this, "Gallery open nahi hui", Toast.LENGTH_SHORT).show();
+            }
+        }, this::refreshToolbar);
+    }
+
+    private void showQuickLinks() {
+        String[] labels = new String[QUICK_LINKS.length];
+        for (int i = 0; i < labels.length; i++) labels[i] = QUICK_LINKS[i][0];
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("\uD83D\uDD17 Quick Links")
+                .setItems(labels, (d, which) -> {
+                    String url = QUICK_LINKS[which][1];
+                    if (url.isEmpty()) {
+                        Intent i = new Intent(this, IpCheckerActivity.class);
+                        i.putExtra("account_id", accountId);
+                        i.putExtra("account_name", accountName);
+                        startActivity(i);
+                    } else {
+                        webView.loadUrl(url);
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void toggleDesktop() {
+        desktop = !desktop;
+        applyMode();
+        refreshToolbar();
+        final int v = desktop ? 1 : 0;
+        App.io(() -> App.db().setDesktop(accountId, v));
+        Toast.makeText(this, desktop ? "\uD83D\uDDA5\uFE0F Desktop view ON" : "\uD83D\uDCF1 Mobile view ON",
+                Toast.LENGTH_SHORT).show();
+        webView.reload();
+    }
+
+    // ------------------------------------------------------------ webview
+
+    /** UA, client hints, viewport and fingerprint script for this clone (mobile or desktop). */
+    private void applyMode() {
+        WebSettings s = webView.getSettings();
+        String ua = device.buildUserAgent(realUa, desktop);
+        s.setUserAgentString(ua);
+        DeviceProfile.applyUaMetadata(s, device, ua, desktop);
+
+        s.setUseWideViewPort(desktop);
+        s.setLoadWithOverviewMode(desktop);
+        s.setSupportZoom(true);
+        s.setBuiltInZoomControls(desktop);
+        s.setDisplayZoomControls(false);
+
+        deviceScript = device.script(accountId, ua, desktop) + ";" + antiDetectScript();
+        if (docStartHandler != null) {
+            try {
+                docStartHandler.remove();
+            } catch (Throwable ignored) {
+            }
+            docStartHandler = null;
+        }
+        docStartOk = false;
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                docStartHandler = WebViewCompat.addDocumentStartJavaScript(webView, deviceScript,
+                        Collections.singleton("*"));
+                docStartOk = true;
+            }
+        } catch (Throwable ignored) {
+            docStartOk = false;
+        }
     }
 
     private void setupWebView() {
@@ -84,19 +214,8 @@ public class WebActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Each clone = its own phone. Real WebView UA, only the "(Linux; ...)" device part is swapped.
-        String finalUa = device.buildUserAgent(settings.getUserAgentString());
-        settings.setUserAgentString(finalUa);
-        DeviceProfile.applyUaMetadata(settings, device, finalUa);
-        deviceScript = device.script(accountId, finalUa);
-        try {
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(webView, deviceScript, Collections.singleton("*"));
-                docStartOk = true;
-            }
-        } catch (Throwable ignored) {
-            docStartOk = false;
-        }
+        realUa = settings.getUserAgentString();
+        applyMode();
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
@@ -120,8 +239,8 @@ public class WebActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
-                if (!docStartOk && deviceScript != null) view.evaluateJavascript(deviceScript, null);
-                injectAntiDetect(view);
+                // Runs at document start when supported; this is the fallback (scripts guard against double run)
+                if (deviceScript != null) view.evaluateJavascript(deviceScript, null);
             }
 
             @Override
@@ -133,23 +252,25 @@ public class WebActivity extends AppCompatActivity {
                 }
             }
 
-            // YAHAN HAI VIRTUAL CAMERA KA LOCAL STREAM INTERCEPTOR
+            // Local virtual-camera picture: only served while Virtual mode is ON, otherwise 404 -> page uses the real camera
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (request.getUrl().toString().contains("vcam.local/stream.jpg")) {
-                    boolean isVcamGlobal = sp.getBoolean("cam_virtual", false);
-                    if (isVcamGlobal) {
-                        String currentVcam = sp.getString("active_vcam_uri_" + accountId, "");
-                        if (!currentVcam.isEmpty()) {
-                            try {
-                                Uri uri = Uri.parse(currentVcam);
-                                InputStream is = getContentResolver().openInputStream(uri);
-                                return new WebResourceResponse("image/jpeg", "UTF-8", is);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
+                    Map<String, String> h = new HashMap<>();
+                    h.put("Access-Control-Allow-Origin", "*");
+                    h.put("Cache-Control", "no-store");
+                    byte[] data = null;
+                    if (sp.getBoolean("cam_virtual", false)) {
+                        try {
+                            data = VcamImg.selectedJpeg(WebActivity.this, sp, accountId);
+                        } catch (Throwable ignored) {
                         }
                     }
+                    if (data != null) {
+                        return new WebResourceResponse("image/jpeg", null, 200, "OK", h, new ByteArrayInputStream(data));
+                    }
+                    return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", h,
+                            new ByteArrayInputStream(new byte[0]));
                 }
                 return super.shouldInterceptRequest(view, request);
             }
@@ -161,16 +282,40 @@ public class WebActivity extends AppCompatActivity {
                 progressBar.setProgress(newProgress);
             }
 
+            // Real camera / microphone for the page (Physical mode)
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> handleWebPermission(request));
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingWebPerm == request) pendingWebPerm = null;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
+                if (WebActivity.this.filePathCallback != null) {
+                    WebActivity.this.filePathCallback.onReceiveValue(null);
+                }
                 WebActivity.this.filePathCallback = filePathCallback;
-                boolean isVcamGlobal = sp.getBoolean("cam_virtual", false);
+                boolean virtual = sp.getBoolean("cam_virtual", false);
 
-                if (isVcamGlobal) {
-                    Intent intent = new Intent(WebActivity.this, VcamActivity.class);
-                    String currentVcam = sp.getString("active_vcam_uri_" + accountId, "");
-                    intent.putExtra("image_uri", currentVcam);
-                    startActivityForResult(intent, REQ_VCAM_CAPTURE);
+                if (virtual && VcamImg.selected(sp, accountId) != null) {
+                    // Virtual mode: hand the selected (adjusted) image to the page
+                    App.io(() -> {
+                        final File out = VcamImg.adjustedFile(WebActivity.this, sp, accountId);
+                        App.ui(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            if (out == null) {
+                                cancelChooser();
+                                return;
+                            }
+                            Intent intent = new Intent(WebActivity.this, VcamActivity.class);
+                            intent.putExtra("image_uri", Uri.fromFile(out).toString());
+                            startActivityForResult(intent, REQ_VCAM_CAPTURE);
+                        });
+                    });
                     return true;
                 }
 
@@ -178,12 +323,58 @@ public class WebActivity extends AppCompatActivity {
                 try {
                     startActivityForResult(intent, REQ_CHOOSE_IMG);
                 } catch (Exception e) {
+                    WebActivity.this.filePathCallback = null;
                     return false;
                 }
                 return true;
             }
         });
     }
+
+    private void cancelChooser() {
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
+    }
+
+    // ------------------------------------------------------------ permissions
+
+    private void handleWebPermission(PermissionRequest request) {
+        List<String> need = new ArrayList<>();
+        for (String r : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)
+                    && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                need.add(Manifest.permission.CAMERA);
+            }
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)
+                    && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                need.add(Manifest.permission.RECORD_AUDIO);
+            }
+        }
+        if (need.isEmpty()) {
+            request.grant(request.getResources());
+        } else {
+            pendingWebPerm = request;
+            requestPermissions(need.toArray(new String[0]), REQ_WEB_PERM);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_WEB_PERM || pendingWebPerm == null) return;
+        boolean ok = grantResults.length > 0;
+        for (int g : grantResults) if (g != PackageManager.PERMISSION_GRANTED) ok = false;
+        try {
+            if (ok) pendingWebPerm.grant(pendingWebPerm.getResources());
+            else pendingWebPerm.deny();
+        } catch (Exception ignored) {
+        }
+        pendingWebPerm = null;
+    }
+
+    // ------------------------------------------------------------ helpers
 
     /**
      * TikTok pages try to wake the real TikTok app with links like snssdk1233://aweme/detail/...
@@ -211,46 +402,66 @@ public class WebActivity extends AppCompatActivity {
         return true;
     }
 
-    private void pickVirtualImage() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("image/*");
-        startActivityForResult(intent, 201);
-    }
-
-    private void injectAntiDetect(WebView view) {
-        // YAHAN HAI GETUSERMEDIA OVERRIDE JO IMAGE KO LIVE STREAM BANATA HAI
-        String js = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
-                    "window.chrome = { runtime: {} };" +
-                    "if(navigator.mediaDevices) {" +
-                    "  navigator.mediaDevices.getUserMedia = function(c) {" +
-                    "    return new Promise((res, rej) => {" +
-                    "      let img = new Image();" +
-                    "      img.crossOrigin = 'anonymous';" +
-                    "      img.src = 'https://vcam.local/stream.jpg?t=' + Date.now();" +
-                    "      img.onload = () => {" +
-                    "        let canvas = document.createElement('canvas');" +
-                    "        canvas.width = 480; canvas.height = 640;" +
-                    "        let ctx = canvas.getContext('2d');" +
-                    "        setInterval(() => ctx.drawImage(img, 0, 0, 480, 640), 33);" +
-                    "        res(canvas.captureStream(30));" +
-                    "      };" +
-                    "      img.onerror = () => rej(new Error('Vcam not ready'));" +
-                    "    });" +
-                    "  };" +
-                    "}";
-        view.evaluateJavascript(js, null);
+    private String antiDetectScript() {
+        // getUserMedia: asks the local vcam.local endpoint. Virtual ON -> picture becomes the camera stream.
+        // Virtual OFF (404) -> falls back to the REAL camera.
+        return "try{Object.defineProperty(navigator, 'webdriver', {get: () => undefined, configurable: true});}catch(e){}" +
+                "window.chrome = window.chrome || { runtime: {} };" +
+                "(function(){" +
+                "  var md = navigator.mediaDevices;" +
+                "  if (!md || !md.getUserMedia || window.__fvc) return;" +
+                "  window.__fvc = 1;" +
+                "  var orig = md.getUserMedia.bind(md);" +
+                "  md.getUserMedia = function(c) {" +
+                "    if (!c || !c.video) return orig(c);" +
+                "    return new Promise(function(res, rej) {" +
+                "      var img = new Image();" +
+                "      img.crossOrigin = 'anonymous';" +
+                "      img.onload = function() {" +
+                "        var cv = document.createElement('canvas');" +
+                "        cv.width = " + VcamImg.OUT_W + "; cv.height = " + VcamImg.OUT_H + ";" +
+                "        var x = cv.getContext('2d');" +
+                "        function d() { x.drawImage(img, 0, 0, cv.width, cv.height); }" +
+                "        d(); setInterval(d, 33);" +
+                "        var st = cv.captureStream(30);" +
+                "        if (c.audio) {" +
+                "          orig({audio: c.audio}).then(function(a) {" +
+                "            a.getAudioTracks().forEach(function(t) { st.addTrack(t); });" +
+                "            res(st);" +
+                "          }, function() { res(st); });" +
+                "        } else { res(st); }" +
+                "      };" +
+                "      img.onerror = function() { orig(c).then(res, rej); };" +
+                "      img.src = 'https://vcam.local/stream.jpg?t=' + Date.now();" +
+                "    });" +
+                "  };" +
+                "})();";
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == 201 && resultCode == Activity.RESULT_OK && data != null) {
-            Uri selectedUri = data.getData();
-            if (selectedUri != null) {
-                sp.edit().putString("active_vcam_uri_" + accountId, selectedUri.toString()).apply();
-                sp.edit().putBoolean("cam_virtual", true).apply();
-                Toast.makeText(this, "VCAM Image Set & Turned ON!", Toast.LENGTH_SHORT).show();
+        if (requestCode == REQ_ADD_VCAM_IMG) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                final Uri src = data.getData();
+                App.io(() -> {
+                    try {
+                        File f = VcamImg.importUri(WebActivity.this, accountId, src);
+                        VcamImg.select(sp, accountId, f);
+                        sp.edit().putBoolean("cam_virtual", true).apply();
+                        App.ui(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            Toast.makeText(this, "\uD83C\uDFAD Image added - Virtual Camera ON", Toast.LENGTH_SHORT).show();
+                            refreshToolbar();
+                            showVcam();
+                        });
+                    } catch (Exception e) {
+                        App.ui(() -> Toast.makeText(this, "Image add nahi hui", Toast.LENGTH_SHORT).show());
+                    }
+                });
+            } else {
+                showVcam();
             }
             return;
         }
@@ -268,5 +479,14 @@ public class WebActivity extends AppCompatActivity {
             filePathCallback.onReceiveValue(null);
         }
         filePathCallback = null;
+    }
+
+    @Override
+    protected void onDestroy() {
+        try {
+            if (webView != null) webView.destroy();
+        } catch (Throwable ignored) {
+        }
+        super.onDestroy();
     }
 }

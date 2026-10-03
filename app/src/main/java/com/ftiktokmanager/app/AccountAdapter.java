@@ -72,7 +72,7 @@ public class AccountAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         h.avatar.setText(name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase(Locale.getDefault()));
         h.name.setText(name);
         h.last.setText(m.lastOpened > 0 ? "Last: " + fmt.format(new Date(m.lastOpened)) : "Last: never");
-        h.device.setText(deviceLine);
+        h.device.setText((m.desk == 1 ? "\uD83D\uDDA5 Desktop \u00B7 " : "") + DeviceProfile.forAccount(m.id).label());
         h.itemView.setOnClickListener(v -> listener.onOpen(m));
         h.itemView.setOnLongClickListener(v -> {
             listener.onMore(m);

@@ -53,40 +53,44 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnChooseImage"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:text="🖼 VCAM Pic"
-            android:textSize="12sp" />
+        <ImageButton
+            android:id="@+id/btnVcam"
+            android:layout_width="40dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Virtual camera"
+            android:src="@drawable/ic_vcam"
+            android:tint="@color/icon_primary" />
+
+        <ImageButton
+            android:id="@+id/btnLinks"
+            android:layout_width="40dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Quick links"
+            android:src="@drawable/ic_link"
+            android:tint="@color/icon_primary" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnKyc"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
             android:minWidth="0dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:text="✅ KYC"
             android:textSize="12sp" />
 
         <ImageButton
-            android:id="@+id/btnMore"
-            android:layout_width="44dp"
+            android:id="@+id/btnView"
+            android:layout_width="40dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="More"
-            android:src="@drawable/ic_more"
+            android:contentDescription="Mobile / Desktop view"
+            android:src="@drawable/ic_phone"
             android:tint="@color/icon_primary" />
     </LinearLayout>
 
