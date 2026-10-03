@@ -25,9 +25,10 @@ jobs:
         gradle-version: '8.5'
 
     - name: Build Debug APK
+      shell: bash
       run: |
+        set -o pipefail
         gradle assembleDebug --console=plain --warning-mode=none 2>&1 | tee build.log
-        exit ${PIPESTATUS[0]}
 
     - name: Error summary
       if: failure()
