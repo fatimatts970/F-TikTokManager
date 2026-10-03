@@ -124,9 +124,7 @@ public class WebActivity extends AppCompatActivity {
         btnView.setOnClickListener(v -> toggleDesktop());
         if (fbMode) {
             // Facebook: only the mobile/desktop view switch (no TikTok links / KYC, no virtual camera)
-            btnVcam.setVisibility(View.GONE);
             findViewById(R.id.btnLinks).setVisibility(View.GONE);
-            findViewById(R.id.btnKyc).setVisibility(View.GONE);
         }
 
         setupWebView();
