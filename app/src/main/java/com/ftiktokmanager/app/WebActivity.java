@@ -44,6 +44,7 @@ public class WebActivity extends AppCompatActivity {
     public static final String EXTRA_ID = "account_id";
     public static final String EXTRA_NAME = "account_name";
     public static final String EXTRA_URL = "url";
+    public static final String EXTRA_SITE = "site"; // "fb" = Facebook mode
     private WebView webView;
     private ProgressBar progressBar;
     private int accountId;
@@ -65,6 +66,7 @@ public class WebActivity extends AppCompatActivity {
 
     private CloneModel clone;
     private boolean webrtcBlock = false;
+    private boolean fbMode = false;
     private boolean profileMode = false;
     private CookieManager cm;
     private SocksBridge bridge;
@@ -95,6 +97,7 @@ public class WebActivity extends AppCompatActivity {
         accountId = getIntent().getIntExtra(EXTRA_ID, 1);
         accountName = getIntent().getStringExtra(EXTRA_NAME);
         sp = getSharedPreferences("cfg", MODE_PRIVATE);
+        fbMode = "fb".equals(getIntent().getStringExtra(EXTRA_SITE));
         device = DeviceProfile.forAccount(accountId);
 
         try {
@@ -105,7 +108,7 @@ public class WebActivity extends AppCompatActivity {
 
         TextView txtTitle = findViewById(R.id.txtTitle);
         if (accountName != null) {
-            txtTitle.setText(accountName);
+            txtTitle.setText(fbMode ? accountName + " \u2022 Facebook" : accountName);
         }
         txtHost = findViewById(R.id.txtHost);
 
@@ -119,6 +122,12 @@ public class WebActivity extends AppCompatActivity {
         findViewById(R.id.btnLinks).setOnClickListener(v -> showQuickLinks());
         findViewById(R.id.btnKyc).setOnClickListener(v -> webView.loadUrl("https://www.tiktok.com/kyc"));
         btnView.setOnClickListener(v -> toggleDesktop());
+        if (fbMode) {
+            // Facebook: only the mobile/desktop view switch (no TikTok links / KYC, no virtual camera)
+            btnVcam.setVisibility(View.GONE);
+            findViewById(R.id.btnLinks).setVisibility(View.GONE);
+            findViewById(R.id.btnKyc).setVisibility(View.GONE);
+        }
 
         setupWebView();
         refreshToolbar();
@@ -174,7 +183,7 @@ public class WebActivity extends AppCompatActivity {
         boolean virtual = sp.getBoolean("cam_virtual", false);
         btnVcam.setColorFilter(virtual ? getColor(R.color.accent_pink) : getColor(R.color.icon_primary));
         btnView.setImageResource(desktop ? R.drawable.ic_desktop : R.drawable.ic_phone);
-        txtHost.setText((desktop ? "Desktop" : "tiktok.com") + " \u2022 " + device.label());
+        txtHost.setText((desktop ? "Desktop" : (fbMode ? "facebook.com" : "tiktok.com")) + " \u2022 " + device.label());
     }
 
     private void showVcam() {
@@ -217,6 +226,19 @@ public class WebActivity extends AppCompatActivity {
         App.io(() -> App.db().setDesktop(accountId, v));
         Toast.makeText(this, desktop ? "\uD83D\uDDA5\uFE0F Desktop view ON" : "\uD83D\uDCF1 Mobile view ON",
                 Toast.LENGTH_SHORT).show();
+        String cur = webView.getUrl();
+        if (fbMode && cur != null) {
+            try {
+                Uri u = Uri.parse(cur);
+                String host = u.getHost() == null ? "" : u.getHost();
+                String want = desktop ? "www.facebook.com" : "m.facebook.com";
+                if (host.endsWith("facebook.com") && !host.equals(want)) {
+                    webView.loadUrl(u.buildUpon().authority(want).build().toString());
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+        }
         webView.reload();
     }
 
@@ -235,7 +257,7 @@ public class WebActivity extends AppCompatActivity {
         s.setBuiltInZoomControls(desktop);
         s.setDisplayZoomControls(false);
 
-        deviceScript = device.script(accountId, ua, desktop) + ";" + antiDetectScript()
+        deviceScript = device.script(accountId, ua, desktop) + ";" + (fbMode ? antiBasicScript() : antiDetectScript())
                 + (webrtcBlock ? ";" + webrtcScript() : "");
         if (docStartHandler != null) {
             try {
@@ -304,7 +326,9 @@ public class WebActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
                 final String cookies = cm.getCookie(url);
                 cm.flush();
-                if (cookies != null) {
+                boolean tiktokPage = url != null && Uri.parse(url).getHost() != null
+                        && Uri.parse(url).getHost().endsWith("tiktok.com");
+                if (cookies != null && tiktokPage) {
                     App.io(() -> App.db().updateCookies(accountId, cookies));
                 }
             }
@@ -358,7 +382,7 @@ public class WebActivity extends AppCompatActivity {
                 WebActivity.this.filePathCallback = filePathCallback;
                 boolean virtual = sp.getBoolean("cam_virtual", false);
 
-                if (virtual && VcamImg.selected(sp, accountId) != null) {
+                if (!fbMode && virtual && VcamImg.selected(sp, accountId) != null) {
                     // Virtual mode: hand the selected (adjusted) image to the page
                     App.io(() -> {
                         final File out = VcamImg.adjustedFile(WebActivity.this, sp, accountId);
@@ -477,6 +501,11 @@ public class WebActivity extends AppCompatActivity {
                 "if(P&&P.setConfiguration){var sc=P.setConfiguration;" +
                 "  P.setConfiguration=function(c){c=Object.assign({},c||{});c.iceServers=[];c.iceTransportPolicy='relay';return sc.call(this,c);};}" +
                 "}catch(e){}})();";
+    }
+
+    private String antiBasicScript() {
+        return "try{Object.defineProperty(navigator, 'webdriver', {get: () => undefined, configurable: true});}catch(e){}" +
+                "window.chrome = window.chrome || { runtime: {} };";
     }
 
     private String antiDetectScript() {

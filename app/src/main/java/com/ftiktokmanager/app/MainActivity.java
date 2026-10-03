@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
         findViewById(R.id.btnTune).setOnClickListener(v -> showSettings());
         findViewById(R.id.tileIp).setOnClickListener(v -> openIp());
         findViewById(R.id.tileLinks).setOnClickListener(v -> openLinks());
+        findViewById(R.id.tileFacebook).setOnClickListener(v -> openFacebook());
         findViewById(R.id.tileBackup).setOnClickListener(v -> confirmBackup());
         findViewById(R.id.tileRestore).setOnClickListener(v -> importLauncher.launch(new String[]{"*/*"}));
 
@@ -460,6 +461,37 @@ public class MainActivity extends AppCompatActivity implements AccountAdapter.Li
                         .show();
             });
         });
+    }
+
+    /** Facebook inside one of the clones (own browser, own device, own proxy). */
+    private void openFacebook() {
+        App.io(() -> {
+            final List<CloneModel> list = App.db().getAllAccounts();
+            App.ui(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (list.isEmpty()) {
+                    Toast.makeText(this, "Add an account first", Toast.LENGTH_SHORT).show();
+                } else if (list.size() == 1) {
+                    startFacebook(list.get(0));
+                } else {
+                    String[] names = new String[list.size()];
+                    for (int i = 0; i < names.length; i++) names[i] = list.get(i).name;
+                    new MaterialAlertDialogBuilder(this)
+                            .setTitle("Open Facebook in which clone?")
+                            .setItems(names, (d, which) -> startFacebook(list.get(which)))
+                            .show();
+                }
+            });
+        });
+    }
+
+    private void startFacebook(CloneModel m) {
+        Intent i = new Intent(this, WebActivity.class);
+        i.putExtra(WebActivity.EXTRA_ID, m.id);
+        i.putExtra(WebActivity.EXTRA_NAME, m.name);
+        i.putExtra(WebActivity.EXTRA_URL, "https://www.facebook.com/");
+        i.putExtra(WebActivity.EXTRA_SITE, "fb");
+        startActivity(i);
     }
 
     private void showAbout() {
