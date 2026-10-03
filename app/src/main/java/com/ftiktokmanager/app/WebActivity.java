@@ -41,7 +41,9 @@ public class WebActivity extends AppCompatActivity {
         sp = getSharedPreferences("cfg", MODE_PRIVATE);
 
         TextView txtTitle = findViewById(R.id.txtTitle);
-        txtTitle.setText(accountName);
+        if (accountName != null) {
+            txtTitle.setText(accountName);
+        }
 
         progressBar = findViewById(R.id.webProgress);
         webView = findViewById(R.id.webView);
@@ -90,7 +92,7 @@ public class WebActivity extends AppCompatActivity {
             }
 
             @Override
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
                 WebActivity.this.filePathCallback = filePathCallback;
                 boolean isVcamGlobal = sp.getBoolean("cam_virtual", false);
 
