@@ -20,7 +20,7 @@ final class BackupManager {
     static String build(DbHelper db) throws JSONException {
         JSONObject root = new JSONObject();
         root.put("app", "F-TikTokManager");
-        root.put("version", 2);
+        root.put("version", 3);
         root.put("exported", System.currentTimeMillis());
 
         JSONArray accounts = new JSONArray();
@@ -28,6 +28,16 @@ final class BackupManager {
             JSONObject o = new JSONObject();
             o.put("name", m.name);
             o.put("cookies", SessionHelper.hasStored(m.cookies) ? m.cookies : "");
+            o.put("notes", m.notes);
+            o.put("email", m.email);
+            o.put("username", m.username);
+            o.put("password", m.password);
+            o.put("desk", m.desk);
+            o.put("pxon", m.pxOn);
+            o.put("px_host", m.pxHost);
+            o.put("px_port", m.pxPort);
+            o.put("px_user", m.pxUser);
+            o.put("px_pass", m.pxPass);
             accounts.put(o);
         }
         root.put("accounts", accounts);
@@ -66,7 +76,10 @@ final class BackupManager {
                 int n = 2;
                 while (names.contains(unique)) unique = name + " (" + (n++) + ")";
                 names.add(unique);
-                db.addAccount(unique, o.optString("cookies", ""));
+                db.addAccountFull(unique, o.optString("cookies", ""), o.optString("notes", ""),
+                        o.optString("email", ""), o.optString("username", ""), o.optString("password", ""),
+                        o.optInt("desk", 0), o.optInt("pxon", 0), o.optString("px_host", ""),
+                        o.optInt("px_port", 0), o.optString("px_user", ""), o.optString("px_pass", ""));
                 added++;
             }
         }

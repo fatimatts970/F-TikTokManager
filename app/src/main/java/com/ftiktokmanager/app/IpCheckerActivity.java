@@ -9,17 +9,14 @@ import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.TimeZone;
-import org.json.JSONObject;
 
 public class IpCheckerActivity extends AppCompatActivity {
     private TextView txtFlag, txtIp, txtCountry, valCity, valIsp, valTz, valDeviceTz, txtStatus;
     private View progress;
     private SharedPreferences sp;
     private String currentIp = "";
+    private volatile String modeLine = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,35 +53,41 @@ public class IpCheckerActivity extends AppCompatActivity {
         txtIp.setText("Checking…");
         txtStatus.setText("");
         txtStatus.setTextColor(getColor(R.color.text_secondary));
+        final int accId = getIntent().getIntExtra("account_id", 0);
+        final String accName = getIntent().getStringExtra("account_name");
         App.io(() -> {
-            try {
-                JSONObject j = new JSONObject(httpGet("https://ipwho.is/"));
-                if (!j.optBoolean("success", true)) throw new IOException("lookup failed");
-                final String ip = j.optString("ip", "");
-                final String country = j.optString("country", "");
-                final String cc = j.optString("country_code", "");
-                final String region = j.optString("region", "");
-                final String city = j.optString("city", "");
-                JSONObject conn = j.optJSONObject("connection");
-                final String isp = conn == null ? "" : conn.optString("isp", conn.optString("org", ""));
-                JSONObject tz = j.optJSONObject("timezone");
-                final String tzId = tz == null ? "" : tz.optString("id", "");
-                sp.edit().putString("last_ip", ip).putString("last_country", country)
-                        .putLong("last_checked", System.currentTimeMillis()).apply();
-                App.ui(() -> show(ip, country, cc, region, city, isp, tzId));
-            } catch (Exception e) {
-                try {
-                    String ip = new JSONObject(httpGet("https://api.ipify.org?format=json")).optString("ip", "");
-                    final String fIp = ip;
-                    App.ui(() -> show(fIp, "", "", "", "", "", ""));
-                } catch (Exception e2) {
-                    App.ui(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        progress.setVisibility(View.GONE);
-                        txtIp.setText("No connection");
-                        txtStatus.setText("Could not reach the IP lookup service. Check your internet and tap refresh.");
-                    });
+            String host = "", user = "", pass = "";
+            int port = 0;
+            if (accId > 0) {
+                CloneModel m = App.db().getAccount(accId);
+                if (m != null && m.proxyActive()) {
+                    host = m.pxHost;
+                    port = m.pxPort;
+                    user = m.pxUser;
+                    pass = m.pxPass;
                 }
+            }
+            final boolean viaProxy = !host.isEmpty();
+            modeLine = viaProxy
+                    ? "🟢 " + (accName == null ? "Account" : accName) + ": through its SOCKS5 proxy"
+                    : "⚪ " + (accName == null ? "This phone" : accName) + ": direct connection";
+            try {
+                final IpTool.Result r = IpTool.fetch(host, port, user, pass);
+                if (!viaProxy) {
+                    sp.edit().putString("last_ip", r.ip).putString("last_country", r.country)
+                            .putLong("last_checked", System.currentTimeMillis()).apply();
+                }
+                App.ui(() -> show(r.ip, r.country, r.cc, r.region, r.city, r.isp, r.tz));
+            } catch (Exception e) {
+                final String msg = e.getMessage() == null ? "unknown" : e.getMessage();
+                App.ui(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    progress.setVisibility(View.GONE);
+                    txtIp.setText("No connection");
+                    txtStatus.setText("❌ Could not check.\n\n" + msg
+                            + "\n\nInternet ya proxy settings check karke dobara try karo.");
+                    txtStatus.setTextColor(getColor(R.color.warning));
+                });
             }
         });
     }
@@ -100,13 +103,14 @@ public class IpCheckerActivity extends AppCompatActivity {
         valCity.setText(loc.isEmpty() ? "-" : loc);
         valIsp.setText(isp.isEmpty() ? "-" : isp);
         valTz.setText(tzId.isEmpty() ? "-" : tzId);
+        String prefix = modeLine.isEmpty() ? "" : modeLine + "\nThis is the connection TikTok sees.\n\n";
         if (tzId.isEmpty()) {
-            txtStatus.setText("Location details are unavailable right now.");
+            txtStatus.setText(prefix + "Location details are unavailable right now.");
         } else if (tzId.equals(TimeZone.getDefault().getID())) {
-            txtStatus.setText("✔ Device timezone matches your IP location.");
+            txtStatus.setText(prefix + "✔ Device timezone matches your IP location.");
             txtStatus.setTextColor(getColor(R.color.success));
         } else {
-            txtStatus.setText("⚠ Device timezone differs from your IP location. Accounts can look suspicious if this keeps changing.");
+            txtStatus.setText(prefix + "⚠ Device timezone differs from your IP location. Accounts can look suspicious if this keeps changing.");
             txtStatus.setTextColor(getColor(R.color.warning));
         }
     }
@@ -117,18 +121,5 @@ public class IpCheckerActivity extends AppCompatActivity {
         int a = Character.codePointAt(u, 0) - 'A' + 0x1F1E6;
         int b = Character.codePointAt(u, 1) - 'A' + 0x1F1E6;
         return new String(Character.toChars(a)) + new String(Character.toChars(b));
-    }
-
-    private static String httpGet(String u) throws IOException {
-        HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
-        try {
-            c.setConnectTimeout(8000);
-            c.setReadTimeout(8000);
-            c.setRequestProperty("User-Agent", "TikTokManager/1.1");
-            if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
-            return BackupManager.readAll(c.getInputStream());
-        } finally {
-            c.disconnect();
-        }
     }
 }

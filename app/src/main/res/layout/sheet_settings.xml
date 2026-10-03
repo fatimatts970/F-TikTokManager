@@ -29,6 +29,14 @@
         android:textColor="@color/text_secondary"
         android:textSize="13sp" />
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDefaultProxy"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="🌐 Default SOCKS5 proxy (new accounts)" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

@@ -20,6 +20,10 @@ final class Ui {
     }
 
     static void promptText(Activity a, String title, String initial, Consumer<String> onOk) {
+        promptText(a, title, initial, "Save", onOk);
+    }
+
+    static void promptText(Activity a, String title, String initial, String okLabel, Consumer<String> onOk) {
         final EditText et = new EditText(a);
         et.setSingleLine(true);
         et.setText(initial);
@@ -32,7 +36,7 @@ final class Ui {
         new MaterialAlertDialogBuilder(a)
                 .setTitle(title)
                 .setView(box)
-                .setPositiveButton("Save", (d, w) -> {
+                .setPositiveButton(okLabel, (d, w) -> {
                     String n = et.getText().toString().trim();
                     if (!n.isEmpty()) onOk.accept(n);
                 })
