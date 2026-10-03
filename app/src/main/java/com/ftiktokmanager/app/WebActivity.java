@@ -24,6 +24,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import java.io.InputStream;
 
 public class WebActivity extends AppCompatActivity {
+    public static final String EXTRA_ID = "account_id";
+    public static final String EXTRA_NAME = "account_name";
+    public static final String EXTRA_URL = "url";
     private WebView webView;
     private ProgressBar progressBar;
     private int accountId;
@@ -39,8 +42,8 @@ public class WebActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_web);
 
-        accountId = getIntent().getIntExtra("account_id", 1);
-        accountName = getIntent().getStringExtra("account_name");
+        accountId = getIntent().getIntExtra(EXTRA_ID, 1);
+        accountName = getIntent().getStringExtra(EXTRA_NAME);
         sp = getSharedPreferences("cfg", MODE_PRIVATE);
 
         TextView txtTitle = findViewById(R.id.txtTitle);
@@ -55,7 +58,8 @@ public class WebActivity extends AppCompatActivity {
         findViewById(R.id.btnChooseImage).setOnClickListener(v -> pickVirtualImage());
 
         setupWebView();
-        webView.loadUrl("https://www.tiktok.com/");
+        String startUrl = getIntent().getStringExtra(EXTRA_URL);
+        webView.loadUrl(startUrl != null ? startUrl : "https://www.tiktok.com/");
     }
 
     private void setupWebView() {
