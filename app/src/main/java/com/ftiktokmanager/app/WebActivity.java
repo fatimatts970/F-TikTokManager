@@ -64,6 +64,7 @@ public class WebActivity extends AppCompatActivity {
     private PermissionRequest pendingWebPerm;
 
     private CloneModel clone;
+    private boolean webrtcBlock = false;
     private boolean profileMode = false;
     private CookieManager cm;
     private SocksBridge bridge;
@@ -234,7 +235,8 @@ public class WebActivity extends AppCompatActivity {
         s.setBuiltInZoomControls(desktop);
         s.setDisplayZoomControls(false);
 
-        deviceScript = device.script(accountId, ua, desktop) + ";" + antiDetectScript();
+        deviceScript = device.script(accountId, ua, desktop) + ";" + antiDetectScript()
+                + (webrtcBlock ? ";" + webrtcScript() : "");
         if (docStartHandler != null) {
             try {
                 docStartHandler.remove();
@@ -256,6 +258,8 @@ public class WebActivity extends AppCompatActivity {
 
     private void setupWebView() {
         // Each clone = its own browser (cookies, storage, cache). Must happen before the WebView is used.
+        // With a proxy in use, WebRTC must not reveal the phone's real IP (both mobile and desktop view)
+        webrtcBlock = ProxyStore.effective(this, clone) != null;
         profileMode = SessionHelper.bindProfile(webView, accountId);
         cm = SessionHelper.cookieManager(profileMode, accountId);
 
@@ -453,6 +457,26 @@ public class WebActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+
+    /**
+     * WebRTC can ask STUN servers over UDP and bypass the proxy, which shows the real IP.
+     * Force "relay only, no servers": no candidates are gathered, so nothing leaks.
+     */
+    private String webrtcScript() {
+        return "(function(){try{" +
+                "if(window.__frtc)return;window.__frtc=1;" +
+                "['RTCPeerConnection','webkitRTCPeerConnection'].forEach(function(n){" +
+                "  var O=window[n];if(!O)return;" +
+                "  var W=function(cfg,opt){cfg=Object.assign({},cfg||{});cfg.iceServers=[];cfg.iceTransportPolicy='relay';return new O(cfg,opt);};" +
+                "  W.prototype=O.prototype;" +
+                "  try{W.generateCertificate=O.generateCertificate;}catch(e){}" +
+                "  window[n]=W;" +
+                "});" +
+                "var P=window.RTCPeerConnection&&RTCPeerConnection.prototype;" +
+                "if(P&&P.setConfiguration){var sc=P.setConfiguration;" +
+                "  P.setConfiguration=function(c){c=Object.assign({},c||{});c.iceServers=[];c.iceTransportPolicy='relay';return sc.call(this,c);};}" +
+                "}catch(e){}})();";
     }
 
     private String antiDetectScript() {
